@@ -7,8 +7,10 @@ on:
     # chiuso, quindi l'unico in cui i percentili di settore confrontano
     # prezzi nello stesso stato. Gli altri sette servono a vedere i
     # movimenti durante il giorno, non a produrre candidati migliori.
+    # Le ore sono elencate invece di usare "*/3" perche' quella forma parte
+    # da mezzanotte (00,03,...,21) e si mangerebbe proprio le 23:00.
     # Nota: il cron di GitHub non e' puntuale, puo' slittare di 5-30 minuti.
-    - cron: "0 */3 * * 1-5"
+    - cron: "0 2,5,8,11,14,17,20,23 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
