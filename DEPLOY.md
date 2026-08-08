@@ -4,19 +4,15 @@ Obiettivo: una pagina HTML sempre raggiungibile, che si aggiorna da sola ogni
 notte, senza server e senza costi.
 
 L'architettura si presta bene perché la pipeline è già batch e produce un file
-statico: **GitHub Actions** fa il calcolo (gratis), **Cloudflare Pages** serve
-il risultato (gratis) e **Cloudflare Access** ci mette davanti un login vero.
-Nessun database, nessun processo da tenere vivo.
+statico: **GitHub Actions** fa il calcolo (gratis), **GitHub Pages** serve il
+risultato (gratis). Nessun database, nessun processo da tenere vivo.
 
 ```
-cron 23:00 UTC → Actions: scarica, calcola, verifica → site/ → Cloudflare Pages
-                     ↑                        ↓                      ↓
-                  cache .cache/        se i dati non bastano     Access: login
+cron 23:00 UTC → Actions: scarica, calcola, verifica → site/ → Pages
+                     ↑                        ↓
+                  cache .cache/        se i dati non bastano
                   e output/            NON pubblica: resta online l'ultimo buono
 ```
-
-Il repository è **privato**. GitHub Pages sul piano gratuito serve solo repo
-pubblici, ed è il motivo per cui il deploy non passa di lì.
 
 ---
 
@@ -48,39 +44,17 @@ soluzione definitiva è il **self-hosted runner** — vedi in fondo.
 
 ## Setup, una volta sola
 
-**1. Repository.** Il progetto sta su GitHub in un repo privato. Il file
+**1. Repository.** Metti il progetto su GitHub. Il file
 `.github/workflows/screen.yml` è già pronto.
 
-**2. Progetto Cloudflare Pages.** Su dash.cloudflare.com → *Workers & Pages* →
-*Create* → *Pages* → **Upload assets** (non "Connect to Git": il deploy lo fa
-Actions con wrangler). Nome del progetto: `dislocation-screener` — deve
-combaciare con `--project-name` nel workflow. Un caricamento fittizio basta a
-crearlo, la prima run vera lo sovrascrive.
+**2. Attiva Pages.** Settings → Pages → *Source*: **GitHub Actions**
+(non "Deploy from a branch").
 
-**3. Credenziali come secret di GitHub.** Servono due valori:
-
-- **API token**: Cloudflare → *My Profile* → *API Tokens* → *Create Token* →
-  template **Edit Cloudflare Workers**, oppure un token custom con il permesso
-  `Account · Cloudflare Pages · Edit`.
-- **Account ID**: è nell'URL della dashboard, `dash.cloudflare.com/<account-id>`.
-
-Poi, senza incollarli in chiaro da nessuna parte:
-
-```bash
-gh secret set CLOUDFLARE_API_TOKEN   # incolla il token quando lo chiede
-gh secret set CLOUDFLARE_ACCOUNT_ID  # incolla l'account id
-```
-
-**4. Primo giro a mano.** Actions → *screen* → **Run workflow**. Il primo giro
+**3. Primo giro a mano.** Actions → *screen* → **Run workflow**. Il primo giro
 è il lento: scarica i fondamentali di tutto l'universo. Da 40 a 90 minuti,
 molto più dei giri successivi.
 
-**5. Il login davanti alla pagina.** Cloudflare → *Zero Trust* → *Access* →
-*Applications* → *Add an application* → **Self-hosted**, dominio quello del
-progetto Pages. Policy: *Allow*, con `Emails` → il tuo indirizzo. Da lì in poi
-chi apre l'URL deve autenticarsi; gratis fino a 50 utenti.
-
-**6. L'URL.** `https://dislocation-screener.pages.dev/`
+**4. L'URL.** `https://<tuo-utente>.github.io/<nome-repo>/`
 Sempre lo stesso, sempre l'ultima versione buona.
 
 Da lì in poi gira da solo alle 23:00 UTC dal lunedì al venerdì — cioè dopo la
@@ -100,21 +74,19 @@ chiusura di New York, quando anche l'Asia ha già chiuso da un pezzo.
 
 ## Pubblico o privato
 
-GitHub Pages su piano gratuito funziona **solo con repository pubblici**: la
-dashboard sarebbe raggiungibile da chiunque conosca l'URL, e per giunta
-indicizzabile da Google, perché Pages non mette `noindex`. Non contiene dati
-personali — sono società quotate — ma è comunque la tua strategia in chiaro,
-codice compreso. Le tre strade:
+GitHub Pages su piano gratuito funziona **solo con repository pubblici**. La
+tua dashboard sarebbe raggiungibile da chiunque conosca l'URL. Non contiene
+dati personali — sono società quotate — ma è comunque la tua strategia in
+chiaro. Tre strade:
 
 | Opzione | Costo | Privacy |
 |---|---|---|
 | Repo pubblico + GitHub Pages | 0 € | pagina pubblica |
-| **Repo privato + Cloudflare Pages** ← in uso | 0 € | sorgente privata, e Cloudflare Access dà login vero fino a 50 utenti, gratis |
+| Repo privato + **Cloudflare Pages** | 0 € | sorgente privata, e Cloudflare Access dà login vero fino a 50 utenti, gratis |
 | Repo privato + GitHub Pages | ~4 €/mese (GitHub Pro) | tutto privato |
 
-È stata scelta la seconda. Senza una policy di Access davanti, però, un
-progetto Pages resta pubblico: **il repo privato protegge il codice, non la
-pagina**. Il login è il passo 5 del setup, non un extra facoltativo.
+Se ti interessa tenerla riservata senza pagare, Cloudflare Pages è la scelta
+migliore: cambia solo l'ultimo passo del workflow, il resto resta identico.
 
 ---
 
@@ -167,15 +139,10 @@ runner GitHub.
 
 ## Costi
 
-Zero in euro, ma con il repo privato i minuti di Actions **non sono più
-illimitati**: il piano gratuito ne dà 2.000 al mese, e una run notturna da 25
-minuti ne consuma circa 550. Ci sta comodamente, però il margine adesso esiste
-davvero — tienilo d'occhio se aggiungi workflow o se aumenti la frequenza.
-Alzare la cadenza a ogni 3 ore, per dire, significa 8 run al giorno: sopra i
-2.000 minuti si paga a consumo.
-
-Cloudflare Pages e Access restano gratuiti: build illimitate su Pages, Access
-gratis fino a 50 utenti.
+Zero, con repo pubblico. Actions è illimitato sui repository pubblici; su
+quelli privati il piano gratuito dà 2.000 minuti al mese e una run notturna
+da 25 minuti ne consuma circa 550. Ci sta comodamente, ma tienilo d'occhio se
+aggiungi altri workflow.
 
 ---
 
