@@ -324,10 +324,6 @@ td.right{text-align:right}
 .newsitem a{color:var(--text);font-size:13px;display:block}
 .newsitem .src{color:var(--faint);font-size:11.5px;margin-top:1px}
 
-footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
-  color:var(--faint);font-size:12px;max-width:900px}
-footer b{color:var(--muted)}
-
 @media (prefers-reduced-motion: reduce){
   *{transition:none!important;animation:none!important}
 }
@@ -390,14 +386,6 @@ footer b{color:var(--muted)}
 <div class="empty" id="emptymsg" style="display:none"></div>
 </div>
 
-<footer>
-  <b>Strumento didattico.</b> Produce candidati da analizzare a mano, non
-  raccomandazioni di investimento. Uno score alto significa solo che il titolo
-  assomiglia a un profilo statistico calcolato su dati gratuiti che possono
-  essere incompleti, in ritardo o errati. Lo screener non conosce il motivo del
-  calo: leggere le notizie e i bilanci resta compito tuo, e ogni decisione
-  operativa avviene fuori da qui, sul tuo broker, a tuo rischio.
-</footer>
 </div>
 
 <div id="backdrop"></div>
