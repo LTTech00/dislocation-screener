@@ -185,7 +185,7 @@ def main() -> None:
     }
 
     html_path = out_dir / f"screen_{stamp}.html"
-    report.write_report(final, meta, str(html_path))
+    report.write_report(final, meta, str(html_path), prices)
     shutil.copyfile(html_path, out_dir / "latest.html")
 
     keep = [c for c in final.columns if c not in ("penalty_items", "news")]

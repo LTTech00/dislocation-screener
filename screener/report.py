@@ -26,11 +26,40 @@ def _j(value, digits: int = 4):
         return None
 
 
-def rows_payload(df: pd.DataFrame) -> list[dict]:
+def _spark(close: pd.Series | None, points: int = 53) -> list[float] | None:
+    """Serie prezzi compattata per il grafico del dettaglio.
+
+    Un anno di barre giornaliere sono ~252 punti per titolo: moltiplicati per
+    l'universo gonfierebbero l'HTML di qualche megabyte. Campionando a passo
+    costante restano ~53 punti (una lettura settimanale) — abbastanza per la
+    forma della curva, che e' l'unica cosa che il grafico deve raccontare.
+    L'ultima barra viene sempre inclusa: e' il prezzo che la tabella mostra.
+    """
+    if close is None or len(close) < 30:
+        return None
+    tail = close.dropna().tail(252)
+    if len(tail) < 30:
+        return None
+    step = max(1, -(-len(tail) // points))      # ceil: mai piu' di `points`+1
+    sampled = list(tail.iloc[::step])
+    if sampled and sampled[-1] != tail.iloc[-1]:
+        sampled.append(tail.iloc[-1])
+    # Due decimali: il grafico e' alto 130px, la terza cifra non si vede e
+    # moltiplicata per l'universo pesa piu' di quanto valga.
+    out = [_j(v, 2) for v in sampled]
+    return out if any(v is not None for v in out) else None
+
+
+def rows_payload(df: pd.DataFrame, prices: dict | None = None) -> list[dict]:
     rows = []
     for _, r in df.iterrows():
         g = r.get
         ticker = g("ticker")
+        px = None
+        if prices:
+            frame = prices.get(ticker)
+            if frame is not None and "Close" in frame:
+                px = _spark(frame["Close"])
         rows.append({
             "t": ticker,
             "n": g("name") or ticker,
@@ -78,6 +107,7 @@ def rows_payload(df: pd.DataFrame) -> list[dict]:
                 "revCagr": _j(g("revenue_cagr_3y")),
                 "shortPct": _j(g("short_pct_float")),
             },
+            "px": px,
             "news": g("news") if isinstance(g("news"), list) else [],
         })
     return rows
@@ -89,8 +119,9 @@ def build_html(rows: list[dict], meta: dict) -> str:
     return _TEMPLATE.replace("__DATA_JSON__", data_json)
 
 
-def write_report(df: pd.DataFrame, meta: dict, path: str) -> None:
-    html = build_html(rows_payload(df), meta)
+def write_report(df: pd.DataFrame, meta: dict, path: str,
+                 prices: dict | None = None) -> None:
+    html = build_html(rows_payload(df, prices), meta)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(html)
 
@@ -104,35 +135,44 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <title>Dislocation Screener</title>
 <style>
 :root{
-  --bg:#0C1116; --panel:#131A22; --panel2:#0F151C; --line:#22303F;
-  --text:#E7EEF5; --muted:#8DA1B5; --faint:#5C6E80;
-  --dis:#A78BFA; --qua:#34D399; --val:#38BDF8; --rep:#F5A524; --tim:#F472B6;
-  --danger:#F0564A; --ok:#34D399; --warn:#F5A524;
-  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
-  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  /* Tema chiaro da terminale finanziario: fondo bianco, grigi a bassa
+     saturazione, filetti sottili invece di riquadri pieni. Il colore e'
+     riservato al dato — se coloriamo anche la cornice, il dato non spicca. */
+  --bg:#FFFFFF; --panel:#FFFFFF; --panel2:#F8FAFC; --line:#E2E8F0;
+  --line-soft:#EFF3F7; --track:#E8EDF2;
+  --text:#0F172A; --muted:#64748B; --faint:#657485;
+  /* Tonalita' scelte per restare leggibili SU BIANCO: l'ambra e il verde
+     accesi del tema scuro qui scenderebbero sotto il 4.5:1. Tutte queste
+     finiscono anche come testo, quindi rispettano la soglia AA. */
+  --dis:#7C3AED; --qua:#047857; --val:#0369A1; --rep:#B45309; --tim:#DB2777;
+  --danger:#B42318; --ok:#067647; --warn:#B45309;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,Menlo,monospace;
+  --shadow:0 1px 2px rgba(15,23,42,.04);
 }
 *{box-sizing:border-box;margin:0}
-html{scrollbar-color:#2b3b4c var(--bg)}
+html{scrollbar-color:#CBD5E1 #F1F5F9}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);
-  font-size:14px;line-height:1.45}
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
 a{color:var(--val);text-decoration:none}
 a:hover{text-decoration:underline}
 .wrap{max-width:1280px;margin:0 auto;padding:20px 22px 60px}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* ---------- banner stato dati ---------- */
-#banner{display:none;padding:10px 22px;font-weight:600;text-align:center}
-#banner.red{display:block;background:#3a1512;color:#ffb4ad;border-bottom:1px solid #6e2620}
-#banner.amber{display:block;background:#33260c;color:#ffd88a;border-bottom:1px solid #6e5620}
+#banner{display:none;padding:10px 22px;font-weight:600;text-align:center;font-size:13px}
+#banner.red{display:block;background:#FEF2F2;color:#991B1B;border-bottom:1px solid #FECACA}
+#banner.amber{display:block;background:#FFFBEB;color:#92400E;border-bottom:1px solid #FDE68A}
 
 /* ---------- testata ---------- */
 header.mast{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;
   justify-content:space-between;padding:6px 0 18px;border-bottom:1px solid var(--line)}
-.wordmark{font-family:var(--serif);font-size:26px;letter-spacing:.14em;
-  font-variant:small-caps;font-weight:600}
-.tagline{color:var(--muted);margin-top:2px;font-size:13px}
-.fresh{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+.wordmark{display:flex;align-items:center;gap:9px;font-size:15px;
+  letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+.wordmark::before{content:"";width:9px;height:16px;background:var(--text);
+  border-radius:1px;flex:none}
+.tagline{color:var(--muted);margin-top:4px;font-size:13px}
+.fresh{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   padding:10px 14px;min-width:280px}
 .fresh .row1{display:flex;align-items:center;gap:8px;font-weight:600}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
@@ -141,7 +181,8 @@ header.mast{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;
 
 /* ---------- controlli ---------- */
 .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch;margin:16px 0 8px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;box-shadow:var(--shadow)}
 .card h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--faint);margin-bottom:8px;font-weight:600}
 .weights{flex:1 1 460px}
@@ -153,7 +194,7 @@ header.mast{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;
 .wrow input[type=range]{grid-column:1/3;width:100%;accent-color:var(--rep);height:18px}
 .reset{margin-top:8px;background:none;border:1px solid var(--line);color:var(--muted);
   border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
-.reset:hover{color:var(--text);border-color:var(--faint)}
+.reset:hover{color:var(--text);border-color:var(--faint);background:var(--panel2)}
 .filters{flex:1 1 380px;display:flex;flex-direction:column;gap:10px}
 .chiprow{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;
@@ -170,49 +211,55 @@ input[type=search]{flex:1;min-width:140px}
 /* ---------- tabella ---------- */
 .counts{color:var(--muted);font-size:12.5px;margin:10px 2px}
 .counts b{color:var(--text)}
-.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel);box-shadow:var(--shadow)}
 table{border-collapse:collapse;width:100%;min-width:960px}
-thead th{position:sticky;top:0;background:var(--panel2);color:var(--faint);
+thead th{position:sticky;top:0;background:var(--panel2);color:var(--muted);
   font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;text-align:left;
-  padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
+  padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+  cursor:pointer;transition:color .15s}
+thead th:hover{color:var(--text)}
 thead th.num-h{text-align:right}
-tbody td{padding:8px 10px;border-bottom:1px solid #182230;vertical-align:middle}
-tbody tr{cursor:pointer}
-tbody tr:hover{background:#182230}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+tbody tr{cursor:pointer;transition:background .12s}
+tbody tr:hover{background:#F5F8FB}
+tbody tr:focus-visible{outline:2px solid var(--val);outline-offset:-2px}
 td.rank{color:var(--faint);font-family:var(--mono);width:34px}
 .name b{display:block;font-weight:600;max-width:250px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .name span{color:var(--faint);font-family:var(--mono);font-size:11.5px}
 .badge{font-size:10px;border:1px solid var(--line);border-radius:4px;
   padding:1px 5px;color:var(--muted);margin-left:6px;letter-spacing:.05em}
-.badge.semi{color:var(--rep);border-color:#5a4315}
+.badge.semi{color:var(--rep);border-color:#FCD9A6;background:#FFFBEB}
 .sector{color:var(--muted);font-size:12px;max-width:150px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 td.right{text-align:right}
-.spine{display:flex;height:9px;width:130px;background:#0a0e13;border-radius:3px;overflow:hidden}
+.spine{display:flex;height:8px;width:130px;background:var(--track);border-radius:2px;overflow:hidden}
 .spine i{display:block;height:100%}
 .scorechip{font-family:var(--mono);font-weight:700;font-size:14px;
-  padding:2px 8px;border-radius:6px;background:#1a2430;display:inline-block;min-width:46px;text-align:right}
-.neg{color:#ff8f85}.pos{color:#7ee2b8}
+  padding:2px 8px;border-radius:5px;background:var(--panel2);border:1px solid var(--line);
+  display:inline-block;min-width:46px;text-align:right}
+.neg{color:var(--danger)}.pos{color:var(--ok)}
 .gapcell{font-family:var(--mono)}
 .gapcell.big{color:var(--rep);font-weight:700}
-.confbar{width:44px;height:5px;background:#0a0e13;border-radius:3px;display:inline-block;vertical-align:middle}
+.confbar{width:44px;height:5px;background:var(--track);border-radius:3px;display:inline-block;vertical-align:middle}
 .confbar i{display:block;height:100%;border-radius:3px;background:var(--faint)}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 
 /* ---------- drawer ---------- */
-#backdrop{position:fixed;inset:0;background:rgba(4,7,10,.55);opacity:0;
+#backdrop{position:fixed;inset:0;background:rgba(15,23,42,.28);opacity:0;
   pointer-events:none;transition:opacity .18s}
 #backdrop.on{opacity:1;pointer-events:auto}
-#drawer{position:fixed;top:0;right:0;bottom:0;width:min(500px,100vw);
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(540px,100vw);
   background:var(--panel);border-left:1px solid var(--line);
+  box-shadow:-8px 0 24px rgba(15,23,42,.08);
   transform:translateX(102%);transition:transform .2s ease;overflow-y:auto;z-index:10}
 #drawer.on{transform:none}
 .dhead{padding:18px 20px 14px;border-bottom:1px solid var(--line);
   position:sticky;top:0;background:var(--panel);z-index:2}
 .dhead .close{position:absolute;top:14px;right:14px;background:none;border:none;
   color:var(--muted);font-size:20px;cursor:pointer;line-height:1}
-.dhead h2{font-family:var(--serif);font-size:20px;letter-spacing:.02em;padding-right:76px}
+.dhead h2{font-size:19px;font-weight:600;letter-spacing:-.01em;padding-right:76px}
 .dhead .sub{padding-right:76px}
 .dhead .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
 .dhead .bigscore{position:absolute;right:18px;top:44px;font-family:var(--mono);
@@ -223,7 +270,7 @@ td.right{text-align:right}
   color:var(--faint);margin-bottom:10px}
 
 /* grafico dello scarto */
-.gapchart{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px}
+.gapchart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:14px}
 .gbar{position:relative;height:22px;margin:7px 0}
 .gbar .lbl{position:absolute;left:0;top:0;bottom:0;display:flex;align-items:center;
   font-size:11.5px;color:var(--muted);width:96px}
@@ -234,28 +281,42 @@ td.right{text-align:right}
   font-family:var(--mono);font-size:12px;padding:0 6px;white-space:nowrap}
 .gapband{position:relative;height:16px;margin:2px 0 4px}
 .gapband .zone{position:absolute;top:2px;bottom:2px;border-radius:2px;
-  background:repeating-linear-gradient(135deg,rgba(245,165,36,.55) 0 4px,transparent 4px 8px);
+  background:repeating-linear-gradient(135deg,rgba(180,83,9,.22) 0 4px,transparent 4px 8px);
   border:1px dashed var(--rep)}
 .gaplegend{color:var(--muted);font-size:12px;margin-top:8px}
 .gaplegend b{color:var(--rep);font-family:var(--mono)}
 .gapnote{margin-top:6px;font-size:12px;color:var(--muted)}
-.gapnote.alert{color:#ffb4ad}
+.gapnote.alert{color:var(--danger)}
+
+/* grafico prezzo — SVG disegnato a mano, nessuna libreria esterna */
+.pxchart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.pxhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.pxlast{font-family:var(--mono);font-size:19px;font-weight:600;letter-spacing:-.02em}
+.pxccy{color:var(--muted);font-size:12px;font-weight:400;margin-left:3px}
+.pxchg{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.pxsvg{display:block;width:100%;height:132px;margin:10px 0 2px}
+.pxsvg path,.pxsvg line{vector-effect:non-scaling-stroke}
+.pxmeta{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:11px;color:var(--faint)}
+.pxnote{color:var(--muted);font-size:11.5px;margin-top:7px;
+  padding-top:7px;border-top:1px solid var(--line)}
+.pxnodata{color:var(--muted);font-size:12.5px}
 
 /* assi */
 .axrow{display:grid;grid-template-columns:96px 1fr 78px;gap:10px;
   align-items:center;margin:7px 0;font-size:12.5px}
-.axrow .bar{height:9px;background:#0a0e13;border-radius:3px;overflow:hidden}
+.axrow .bar{height:8px;background:var(--track);border-radius:2px;overflow:hidden}
 .axrow .bar i{display:block;height:100%}
 .axrow .v{font-family:var(--mono);color:var(--muted);text-align:right}
 
 /* fondamentali */
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 18px}
-.fitem{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted #1c2836;
-  padding:3px 0;font-size:12.5px}
+.fitem{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line-soft);
+  padding:4px 0;font-size:12.5px}
 .fitem span{color:var(--muted)} .fitem b{font-family:var(--mono);font-weight:600}
 
 .penlist{display:flex;flex-direction:column;gap:6px}
-.pen{display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:#ffb4ad}
+.pen{display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--danger)}
 .pen b{font-family:var(--mono);flex:none}
 .nopen{color:var(--muted);font-size:12.5px}
 
@@ -542,6 +603,61 @@ function render(){
 }
 
 /* ------------------------------------------------ drawer di dettaglio */
+/* Grafico prezzo a 12 mesi. SVG costruito a mano: la dashboard deve
+   restare un file solo, apribile con doppio click e senza rete, quindi
+   niente Chart.js e niente CDN. viewBox fisso + preserveAspectRatio="none"
+   lo fa allungare alla larghezza del drawer; vector-effect tiene il tratto
+   di spessore costante malgrado lo stiramento. */
+function pxChart(r){
+  const px = (r.px || []).filter(v => v != null);
+  if (px.length < 8)
+    return `<div class="pxchart"><div class="pxnodata">Serie storica non disponibile
+      per questo titolo.</div></div>`;
+  const lo = Math.min(...px), hi = Math.max(...px);
+  const span = (hi - lo) || 1;
+  const W = 300, H = 100, pad = 7;
+  const X = i => (i / (px.length - 1)) * W;
+  const Y = v => pad + (1 - (v - lo) / span) * (H - 2 * pad);
+
+  let d = "";
+  px.forEach((v, i) => { d += (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); });
+  const area = d + `L${W} ${H} L0 ${H} Z`;
+
+  const last = px[px.length - 1], first = px[0];
+  const chg = (last / first - 1) * 100;
+  const col = chg >= 0 ? "var(--ok)" : "var(--danger)";
+  /* Campionamento settimanale: le ultime ~4 letture sono l'ultimo mese,
+     cioe' la finestra su cui scatta il trigger di dislocazione. */
+  const i1m = Math.max(0, px.length - 5);
+  const yHi = Y(hi).toFixed(1), yLo = Y(lo).toFixed(1);
+
+  return `<div class="pxchart">
+    <div class="pxhead">
+      <div><span class="pxlast">${nf2.format(last)}</span><span class="pxccy">${esc(r.m.ccy||"")}</span></div>
+      <div class="pxchg" style="color:${col}">${(chg>=0?"+":"")+nf1.format(chg)}% · 12 mesi</div>
+    </div>
+    <svg class="pxsvg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+         aria-label="Andamento del prezzo negli ultimi dodici mesi">
+      <defs><linearGradient id="pxg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${col}" stop-opacity=".16"/>
+        <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <rect x="${X(i1m).toFixed(1)}" y="0" width="${(W-X(i1m)).toFixed(1)}" height="${H}"
+            fill="var(--track)" opacity=".55"/>
+      <line x1="0" y1="${yHi}" x2="${W}" y2="${yHi}" stroke="var(--line)"
+            stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="0" y1="${yLo}" x2="${W}" y2="${yLo}" stroke="var(--line)"
+            stroke-width="1" stroke-dasharray="3 3"/>
+      <path d="${area}" fill="url(#pxg)"/>
+      <path d="${d}" fill="none" stroke="${col}" stroke-width="1.6"
+            stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <div class="pxmeta"><span>min ${nf2.format(lo)}</span><span>max ${nf2.format(hi)}</span></div>
+    <div class="pxnote">La fascia grigia a destra e' l'ultimo mese, la finestra su cui
+      scatta il trigger. Righe tratteggiate: minimo e massimo del periodo.</div>
+  </div>`;
+}
+
 function gapChart(r){
   const dp = r.m.ret1m==null?null:r.m.ret1m*100;
   const de = !r.m.hasEst||r.m.epsD30==null?null:r.m.epsD30*100;
@@ -645,6 +761,7 @@ function openDrawer(t){
       </div>
     </div>
     <div class="dbody">
+      <div class="dsec"><h4>Prezzo — ultimi 12 mesi</h4>${pxChart(r)}</div>
       <div class="dsec"><h4>Lo scarto — prezzo contro stime</h4>${gapChart(r)}</div>
       <div class="dsec"><h4>Contributo degli assi (pesi attuali)</h4>${axes}</div>
       <div class="dsec"><h4>Penalità (−${nf1.format(r.pen)} totali)</h4>${pens}</div>
