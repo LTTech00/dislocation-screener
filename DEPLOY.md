@@ -8,7 +8,7 @@ statico: **GitHub Actions** fa il calcolo (gratis), **GitHub Pages** serve il
 risultato (gratis). Nessun database, nessun processo da tenere vivo.
 
 ```
-cron 23:00 UTC → Actions: scarica, calcola, verifica → site/ → Pages
+cron ogni 3h (lun-ven) → Actions: scarica, calcola, verifica → site/ → Pages
                      ↑                        ↓
                   cache .cache/        se i dati non bastano
                   e output/            NON pubblica: resta online l'ultimo buono
@@ -57,8 +57,19 @@ molto più dei giri successivi.
 **4. L'URL.** `https://<tuo-utente>.github.io/<nome-repo>/`
 Sempre lo stesso, sempre l'ultima versione buona.
 
-Da lì in poi gira da solo alle 23:00 UTC dal lunedì al venerdì — cioè dopo la
-chiusura di New York, quando anche l'Asia ha già chiuso da un pezzo.
+Da lì in poi gira da solo **ogni 3 ore, dal lunedì al venerdì**.
+
+Il giro delle 23:00 UTC resta quello di riferimento: è l'unico momento in cui
+USA, Europa e Asia hanno tutti chiuso, quindi l'unico in cui i percentili di
+settore confrontano prezzi nello stesso stato. Gli altri sette giri servono a
+vedere i movimenti durante la giornata — aggiornano le colonne guidate dal
+prezzo (σ 1M, drawdown, RSI, il lato-prezzo dello scarto), mentre qualità,
+valore e stime restano fermi fino al rinnovo delle rispettive cache.
+
+Il workflow passa `--force-prices`: senza, i giri dal secondo in poi
+rileggerebbero la cache prezzi del giorno — che è **un file al giorno** — e
+ripubblicherebbero una pagina identica. Costa circa 6 richieste a giro
+(i prezzi si scaricano in batch da 80 ticker), non 452.
 
 ### Cosa finisce online
 
@@ -112,8 +123,11 @@ freschezza nel report diventa rosso da solo dopo 72 ore — che una pagina
 fresca con dentro numeri sbagliati.
 
 **L'archivio è sparito.** Vive nella cache di Actions, che GitHub sfratta dopo
-7 giorni di inutilizzo o oltre i 10 GB. Girando ogni notte resta calda, ma se
-sospendi il workflow per una settimana l'archivio si perde. Il report corrente
+7 giorni di inutilizzo o oltre i 10 GB. Girando otto volte al giorno resta
+caldissima, ma proprio per questo il tetto dei 10 GB arriva prima: ogni giro
+salva uno snapshot completo di `.cache` e `output`, e lo sfratto è LRU — le
+voci vecchie cadono per prime, quella nuova sopravvive. Se sospendi il
+workflow per una settimana l'archivio si perde comunque. Il report corrente
 no: quello sta su Pages.
 
 ---

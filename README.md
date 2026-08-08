@@ -1,7 +1,7 @@
 # Dislocation Screener
 
 > **Online e automatico:** il progetto include un workflow GitHub Actions
-> che rigenera la dashboard ogni notte e la pubblica su GitHub Pages.
+> che rigenera la dashboard ogni 3 ore nei feriali e la pubblica su GitHub Pages.
 > Istruzioni e limiti in [DEPLOY.md](DEPLOY.md).
 
 Cerca società di qualità il cui prezzo è sceso **molto più delle attese sui loro

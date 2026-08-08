@@ -2,10 +2,13 @@ name: screen
 
 on:
   schedule:
-    # 23:00 UTC nei giorni feriali = dopo la chiusura di New York.
-    # Nota: il cron di GitHub non e' puntuale, puo' slittare di 5-30 minuti
-    # nelle ore di punta. Per uno screen giornaliero e' irrilevante.
-    - cron: "0 23 * * 1-5"
+    # Ogni 3 ore nei giorni feriali. Il giro delle 23:00 UTC resta quello
+    # "buono": e' l'unico momento in cui USA, Europa e Asia hanno tutti
+    # chiuso, quindi l'unico in cui i percentili di settore confrontano
+    # prezzi nello stesso stato. Gli altri sette servono a vedere i
+    # movimenti durante il giorno, non a produrre candidati migliori.
+    # Nota: il cron di GitHub non e' puntuale, puo' slittare di 5-30 minuti.
+    - cron: "0 */3 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
@@ -72,12 +75,19 @@ jobs:
       - name: Controllo offline
         run: python -m screener.selftest
 
+      # --force-prices e' obbligatorio con la cadenza a 3 ore: la cache
+      # prezzi e' UN FILE AL GIORNO, quindi senza il flag i giri dal
+      # secondo in poi rileggerebbero il pickle di stamattina e
+      # ripubblicherebbero una pagina identica. Costa ~6 richieste
+      # (batch da 80 ticker), non 452: il resto arriva dalle cache
+      # con TTL proprio (fondamentali 7 giorni, stime e notizie 20 ore).
       - name: Screen
         env:
           SCREENER_PACING: "3.0"     # in CI si va piano di proposito
         run: |
           python -m screener.run_screen \
             --mode "${{ inputs.mode || 'and' }}" \
+            --force-prices \
             ${{ inputs.fast && '--fast' || '' }}
 
       - name: Salva cache

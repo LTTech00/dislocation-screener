@@ -160,7 +160,7 @@ def build(path):
                   style("curl", fontName="Helvetica-Bold", fontSize=10, leading=14,
                         textColor=BLUE, spaceAfter=4)))
     S.append(para(f"Aggiornato al {date.today().strftime('%d/%m/%Y')} &middot; "
-                  "la dashboard si rigenera da sola ogni notte",
+                  "la dashboard si rigenera da sola ogni 3 ore nei feriali",
                   style("cdate", fontName="Helvetica", fontSize=8.6, leading=12,
                         textColor=FAINT)))
     S.append(Spacer(1, 16 * mm))
@@ -185,7 +185,7 @@ def build(path):
                   "solo del 3%. Quella distanza &egrave; l'anomalia.", LEAD))
     S.append(para(
         "L'universo &egrave; S&amp;P 500 pi&ugrave; large cap europee e asiatiche - circa 900-1.100 "
-        "titoli, con copertura dedicata ai semiconduttori. Ogni notte la pipeline "
+        "titoli, con copertura dedicata ai semiconduttori. Ogni tre ore la pipeline "
         "scarica prezzi, stime e notizie, calcola, e pubblica una pagina sola. "
         "Non c'&egrave; nulla da installare e nulla da tenere acceso."))
 
@@ -212,8 +212,12 @@ def build(path):
     S.append(para("Dove vive e quando cambia", H2))
     S.append(table(
         ["Quando", "Cosa succede"],
-        [["23:00 UTC, lun-ven", "La pipeline gira su GitHub Actions: scarica, calcola, "
-          "verifica. In ora italiana &egrave; l'01:00 di notte, da marted&igrave; a sabato."],
+        [["Ogni 3 ore, lun-ven", "La pipeline gira su GitHub Actions: scarica, calcola, "
+          "verifica. Otto giri al giorno; l'orario pu&ograve; slittare di mezz'ora."],
+         ["Il giro delle 23:00 UTC", "&Egrave; quello di riferimento: l'unico momento in cui "
+          "USA, Europa e Asia hanno tutti chiuso, quindi l'unico in cui il confronto fra "
+          "titoli di regioni diverse &egrave; alla pari. Gli altri sette aggiornano solo le "
+          "colonne guidate dal prezzo - qualit&agrave;, valore e stime non si muovono."],
          ["Se i dati bastano", "La pagina viene sostituita con lo screen nuovo."],
          ["Se i dati non bastano", "<b>Non</b> pubblica: resta online l'ultima versione buona, "
           "e il banner di freschezza ingiallisce e poi arrossisce da solo."],
