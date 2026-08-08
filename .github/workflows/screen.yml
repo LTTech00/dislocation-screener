@@ -22,10 +22,10 @@ on:
         type: boolean
         default: false
 
+# Il deploy va su Cloudflare Pages, non su GitHub Pages: al workflow
+# non servono piu' i permessi 'pages' ne' l'OIDC.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Una run alla volta. Due pipeline concorrenti sullo stesso IP
 # sono il modo piu' rapido per farsi bloccare da Yahoo.
@@ -118,18 +118,14 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-pages-artifact@v3
+      # Il deploy sta nello stesso job: site/ e' gia' qui, non serve
+      # passarlo a un job separato come voleva il flusso GitHub Pages.
+      # Gira solo se il gate ha dato via libera, quindi una run degradata
+      # non sovrascrive l'ultima versione buona su Cloudflare.
+      - name: Deploy su Cloudflare Pages
         if: steps.publish.outputs.publishable == 'true'
+        uses: cloudflare/wrangler-action@v3
         with:
-          path: site
-
-  deploy:
-    needs: run
-    if: needs.run.outputs.publishable == 'true'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=dislocation-screener --branch=main
